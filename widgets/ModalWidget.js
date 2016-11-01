@@ -1,0 +1,392 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  TouchableHighlight,
+  Navigator,
+  Image,
+  TouchableOpacity,
+  PixelRatio,
+} from 'react-native';
+
+var WidgetMixin = require('../mixins/WidgetMixin');
+
+var GiftedFormManager = require('../GiftedFormManager');
+var TimerMixin = require('react-timer-mixin');
+
+var moment = require('moment');
+
+module.exports = React.createClass({
+  mixins: [TimerMixin, WidgetMixin],
+
+  getDefaultProps() {
+    return {
+      type: 'ModalWidget',
+      scrollEnabled: true,
+      disclosure: true,
+      cancelable: false,
+      displayValue: '',
+      onClose: () => {}
+    };
+  },
+
+  propTypes: {
+    type: React.PropTypes.string,
+    scrollEnabled: React.PropTypes.bool,
+    disclosure: React.PropTypes.bool,
+    cancelable: React.PropTypes.bool,
+    displayValue: React.PropTypes.string,
+    onClose: React.PropTypes.func
+  },
+
+  getInitialState() {
+    return {
+      // @todo
+      // should be an object with all status
+      // childrenAreValid: {},
+    };
+  },
+
+  renderDisclosure() {
+    if (this.props.disclosure === true) {
+      return (
+        <Image
+          style={this.getStyle('disclosure')}
+          resizeMode={Image.resizeMode.contain}
+          source={require('../icons/disclosure.png')}
+        />
+      );
+    }
+    return null;
+  },
+
+  onPress() {
+
+    // title={this.props.title} // @todo working  ?
+    this.initialState = GiftedFormManager.getValues(this.props.formName)[this.props.displayValue];
+    var _self = this;
+
+    var {
+      GiftedFormModal
+    } = require('../GiftedForm.js');
+
+    var route = {
+      onClose: _self.onClose,
+      renderScene(navigator) {
+        // not passing onFocus/onBlur of the current scene to the new scene
+        var {onFocus, onBlur, ...others} = _self.props;
+
+        return (
+          <GiftedFormModal
+            {...others}
+
+            navigator={navigator}
+            isModal={true}
+            children={_self._childrenWithProps}
+          />
+        );
+      },
+      getTitle() {
+        return _self.props.title || '';
+      },
+      getDisplayValue() {
+        return _self.props.displayValue || '';
+      },
+      configureScene() {
+        var sceneConfig = Navigator.SceneConfigs.FloatFromBottom;
+        // disable pop gesture
+        sceneConfig.gestures = {};
+        return sceneConfig;
+      },
+      renderLeftButton(navigator) {
+        if (_self.props.cancelable === true) {
+          return (
+            <TouchableOpacity
+              onPress={() => {
+                _self.requestAnimationFrame(() => {
+                  _self.onClose(null, navigator);
+                });
+              }}
+            >
+              <Image
+                style={{
+                  width: 21,
+                  marginLeft: 10,
+                  tintColor: '#097881',
+                }}
+                resizeMode={Image.resizeMode.contain}
+                source={require('../icons/close.png')}
+              />
+            </TouchableOpacity>
+          );
+        }
+        return null;
+      },
+      renderRightButton(navigator) {
+        // @todo other solution than onBack ? maybe do something automatically when scene get focus
+        // @todo move button style to themes
+        return (
+          <TouchableOpacity
+            onPress={() => {
+              _self.requestAnimationFrame(() => {
+                _self.onClose(null, navigator);
+              });
+            }}
+          >
+            <Image
+              style={{
+                width: 21,
+                marginRight: 10,
+                tintColor: '#097881',
+              }}
+              resizeMode={Image.resizeMode.contain}
+              source={require('../icons/check.png')}
+            />
+          </TouchableOpacity>
+        );
+      },
+      onConfirm() {
+        if(_self.checkIsValid()) {
+          this.updateDisplayValue();
+        }
+        else {
+          this.reset();
+        }
+      },
+      updateDisplayValue() {
+        _self.setState({
+          value: _self._getDisplayableValue(),
+        });        
+      },
+      reset() {
+        _self.revertToInitialState.call(_self);
+      }
+    };
+
+    // console.log('this.props.openModal from modal widget');
+    // console.log(typeof this.props.openModal);
+
+    if (this.props.openModal === null) {
+      console.warn('GiftedForm: openModal prop is missing in GiftedForm component');
+    } else {
+      this.props.openModal(route);
+    }
+  },
+
+  componentWillMount() {
+    this._childrenWithProps = React.Children.map(this.props.children, (child) => {
+      return React.cloneElement(child, {
+        formStyles: this.props.formStyles,
+        openModal: this.props.openModal,
+        formName: this.props.formName,
+        navigator: this.props.navigator,
+        onFocus: this.props.onFocus,
+        onBlur: this.props.onBlur,
+        onValidation: this.props.onValidation,
+        onValueChange: this.props.onValueChange,
+
+        onClose: this.onClose,
+      });
+    });
+  },
+
+  componentDidMount() {
+    this.setState({
+      value: this._getDisplayableValue(),
+    });
+  },
+
+  revertToInitialState() {
+    this.handleRevertValue(this.initialState);
+    this.setState({
+      value: this._getDisplayableValue()
+    });
+  },
+
+  checkIsValid() {
+    GiftedFormManager.getValues(this.props.formName);
+  },
+
+  onClose(value, navigator = null) {
+    if (typeof value === 'string') {
+      this.setState({
+        value: value,
+      });
+    } else if (this.props.displayValue !== '') {
+      this.setState({
+        value: this._getDisplayableValue(),
+      });
+    }
+
+    if (navigator !== null) {
+      navigator.pop();
+    }
+
+    this.props.onClose && this.props.onClose();
+  },
+
+  refreshDisplayableValue() {
+    this.setState({
+      value: this._getDisplayableValue(),
+    });
+  },
+
+  handleRevertValue(initialState) {
+    let selectChild = this.props.children
+      .filter((child, idx) => child.props.type === 'SelectWidget');
+
+    if(selectChild && selectChild.length) {
+      selectChild[0].props.children.forEach((child, idx) => {
+        const val = child.props.value;
+        const name = `${this.props.displayValue}{${val}}`;
+        const isSelected = (Array.isArray(initialState)) ? initialState.includes(val) 
+          : initialState === val;
+        GiftedFormManager.updateValue(this.props.formName, name, isSelected);
+      });
+    }
+    else {
+      GiftedFormManager.updateValue(this.props.formName, this.props.displayValue, initialState);
+    }
+  },
+
+  _getDisplayableValue() {
+    if (this.props.displayValue !== '') {
+      if (typeof GiftedFormManager.stores[this.props.formName] !== 'undefined') {
+        if (typeof GiftedFormManager.stores[this.props.formName].values !== 'undefined') {
+          if (typeof GiftedFormManager.stores[this.props.formName].values[this.props.displayValue] !== 'undefined') {
+            if (typeof this.props.transformValue === 'function') {
+              return this.props.transformValue(GiftedFormManager.stores[this.props.formName].values[this.props.displayValue]);
+            } else if (GiftedFormManager.stores[this.props.formName].values[this.props.displayValue] instanceof Date) {
+              return moment(GiftedFormManager.stores[this.props.formName].values[this.props.displayValue]).calendar(null, {
+                sameDay: '[Today]',
+                nextDay: '[Tomorrow]',
+                nextWeek: 'dddd',
+                lastDay: '[Yesterday]',
+                lastWeek: '[Last] dddd'
+              });
+            }
+            if (typeof GiftedFormManager.stores[this.props.formName].values[this.props.displayValue] === 'string') {
+              return GiftedFormManager.stores[this.props.formName].values[this.props.displayValue].trim();
+            }
+          } else {
+            // @todo merge with when not select menu
+
+            // when values[this.props.displayValue] is not found
+            // probably because it's a select menu
+            // options of select menus are stored using the syntax name{value}, name{value}
+            var values = GiftedFormManager.getValues(this.props.formName);
+            if (typeof values === 'object') {
+              if (typeof values[this.props.displayValue] !== 'undefined') {
+                if (typeof this.props.transformValue === 'function') {
+                  return this.props.transformValue(values[this.props.displayValue]);
+                } else {
+                  if (Array.isArray(values[this.props.displayValue])) {
+                    var value = values[this.props.displayValue].join(', ');
+ 
+                    // extract the title from the SelectWidget
+                    if(value !== 'undefined' && this.props.children !== 'undefined') {
+                        // find the select
+                        for(var s in this.props.children) {
+                          if(this.props.children[s].props.type == 'SelectWidget') {
+                            if(this.props.children[s].props.children !== 'undefined') {
+                            // find the associated option
+                            for(var o in this.props.children[s].props.children) {
+                              if(this.props.children[s].props.children[o].props.value === value) {
+                                // if the title is set, use that
+                                if(this.props.children[s].props.children[o].props.title !== 'undefined') {
+                                  return this.props.children[s].props.children[o].props.title;
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+
+                    return value;
+                  } else if (values[this.props.displayValue] instanceof Date) {
+                    return moment(values[this.props.displayValue]).calendar(null, {
+                      sameDay: '[Today]',
+                      nextDay: '[Tomorrow]',
+                      nextWeek: 'dddd',
+                      lastDay: '[Yesterday]',
+                      lastWeek: '[Last] dddd'
+                    });
+                  } else {
+                    return values[this.props.displayValue];
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return '';
+  },
+
+  render() {
+    return (
+      <TouchableHighlight
+        onPress={() => {
+          this.requestAnimationFrame(() => {
+            this.onPress();
+          });
+        }}
+        underlayColor={this.getStyle('underlayColor').pop()}
+
+        {...this.props} // mainly for underlayColor
+
+        style={this.getStyle('rowContainer')}
+      >
+        <View style={this.getStyle('row')}>
+          {this._renderImage()}
+          <Text numberOfLines={1} style={this.getStyle('modalTitle')}>{this.props.title}</Text>
+          <View style={this.getStyle('alignRight')}>
+            <Text numberOfLines={1} style={this.getStyle('modalValue')}>{this.state.value}</Text>
+          </View>
+          {this.renderDisclosure()}
+        </View>
+      </TouchableHighlight>
+    );
+  },
+
+  defaultStyles: {
+    rowImage: {
+      height: 20,
+      width: 20,
+      marginLeft: 10,
+    },
+    rowContainer: {
+      backgroundColor: '#FFF',
+      borderBottomWidth: 1 / PixelRatio.get(),
+      borderColor: '#c8c7cc',
+    },
+    underlayColor: '#c7c7cc',
+    row: {
+      flexDirection: 'row',
+      height: 44,
+      alignItems: 'center',
+    },
+    disclosure: {
+      // transform: [{rotate: '90deg'}],
+      marginLeft: 10,
+      marginRight: 10,
+      width: 11,
+    },
+    modalTitle: {
+      flex: 1,
+      fontSize: 15,
+      color: '#000',
+      paddingLeft: 10,
+    },
+    alignRight: {
+      alignItems: 'flex-end',
+      // width: 110,
+    },
+    modalValue: {
+      fontSize: 15,
+      color: '#000',
+    },
+  },
+});
