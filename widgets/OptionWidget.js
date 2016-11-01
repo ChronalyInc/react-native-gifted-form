@@ -22,7 +22,7 @@ module.exports = React.createClass({
   },
   
   _renderCheckmark() {
-    if (this.state.value === true || this.isSelected()) {
+    if (this.state.value === true) {
       return (
         <Image
           style={this.getStyle('checkmark')}
@@ -32,10 +32,6 @@ module.exports = React.createClass({
       );
     }
     return null;
-  },
-  
-  isSelected() {
-    return GiftedFormManager.stores[this.props.formName].values[this.props.name] === true;
   },
   
   _onClose() {

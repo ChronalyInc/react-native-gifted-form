@@ -64,6 +64,7 @@ module.exports = React.createClass({
 
     // title={this.props.title} // @todo working  ?
     this.initialState = GiftedFormManager.getValues(this.props.formName)[this.props.displayValue];
+ 
     var _self = this;
 
     var {
